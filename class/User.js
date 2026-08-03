@@ -12,6 +12,7 @@ let _invoice_ispaid_cache = {};
 let _listtransactions_cache = false;
 let _listtransactions_cache_expiry_ts = 0;
 let _bitcoin_network_cache = false;
+let _bitcoin_network_promise = null;
 
 export class User {
   /**
@@ -449,8 +450,9 @@ export class User {
    */
   async _getBitcoinNetwork() {
     if (_bitcoin_network_cache) return _bitcoin_network_cache;
+    if (_bitcoin_network_promise) return _bitcoin_network_promise;
     const self = this;
-    return new Promise((resolve) => {
+    _bitcoin_network_promise = new Promise((resolve) => {
       self._lightning.getInfo({}, function (err, info) {
         let network = bitcoinNetworks.bitcoin;
         if (!err && info) {
@@ -458,11 +460,13 @@ export class User {
           if (name === 'regtest' || name === 'simnet') network = bitcoinNetworks.regtest;
           else if (name === 'testnet') network = bitcoinNetworks.testnet;
           else network = bitcoinNetworks.bitcoin;
+          _bitcoin_network_cache = network;
         }
-        _bitcoin_network_cache = network;
+        _bitcoin_network_promise = null;
         resolve(network);
       });
     });
+    return _bitcoin_network_promise;
   }
 
   async _getChainTransactions() {
