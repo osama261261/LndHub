@@ -4,12 +4,14 @@ var crypto = require('crypto');
 var lightningPayReq = require('bolt11');
 import { BigNumber } from 'bignumber.js';
 import { decodeRawHex } from '../btc-decoder';
+import { networks as bitcoinNetworks } from 'bitcoinjs-lib';
 const config = require('../config');
 
 // static cache:
 let _invoice_ispaid_cache = {};
 let _listtransactions_cache = false;
 let _listtransactions_cache_expiry_ts = 0;
+let _bitcoin_network_cache = false;
 
 export class User {
   /**
@@ -437,7 +439,34 @@ export class User {
     }
   }
 
+  /**
+   * Resolves the bitcoinjs-lib network that matches the connected lnd node, so raw
+   * transactions are decoded with the correct address prefix (e.g. `bcrt1` on regtest,
+   * `tb1` on testnet, `bc1` on mainnet). Falls back to mainnet on any error. Cached.
+   *
+   * @returns {Promise<Object>} bitcoinjs-lib network object
+   * @private
+   */
+  async _getBitcoinNetwork() {
+    if (_bitcoin_network_cache) return _bitcoin_network_cache;
+    const self = this;
+    return new Promise((resolve) => {
+      self._lightning.getInfo({}, function (err, info) {
+        let network = bitcoinNetworks.bitcoin;
+        if (!err && info) {
+          const name = (info.chains && info.chains[0] && info.chains[0].network) || (info.testnet ? 'testnet' : 'mainnet');
+          if (name === 'regtest' || name === 'simnet') network = bitcoinNetworks.regtest;
+          else if (name === 'testnet') network = bitcoinNetworks.testnet;
+          else network = bitcoinNetworks.bitcoin;
+        }
+        _bitcoin_network_cache = network;
+        resolve(network);
+      });
+    });
+  }
+
   async _getChainTransactions() {
+    const network = await this._getBitcoinNetwork();
     return new Promise((resolve, reject) => {
       this._lightning.getTransactions({}, (err, data) => {
         if (err) return reject(err);
@@ -448,7 +477,7 @@ export class User {
         transactions
           .filter((tx) => tx.label !== 'external' && !tx.label.includes('openchannel'))
           .map((tx) => {
-            const decodedTx = decodeRawHex(tx.raw_tx_hex);
+            const decodedTx = decodeRawHex(tx.raw_tx_hex, network);
             decodedTx.outputs.forEach((vout) =>
               outTxns.push({
                 // mark all as received, since external is filtered out
