@@ -48,8 +48,15 @@ Config is supplied via the `CONFIG` env var (JSON that fully replaces `config.js
 ```bash
 cd /workspace
 export CONFIG='{"redis":{"host":"127.0.0.1","port":6379,"db":0},"lnd":{"url":"127.0.0.1:10009","password":"password01"}}'
-npm run dev      # nodemon hot-reload; listens on 0.0.0.0:3000
+export HOST=::   # bind dual-stack; see note below
+npm run dev      # nodemon hot-reload; listens on :::3000
 ```
+
+Port-forwarding gotcha: `index.js` defaults `HOST` to `0.0.0.0` (IPv4 only). On this VM
+`localhost` resolves to IPv6 `::1` first, and the Cursor browser port-forwarder dials
+`localhost`, so an IPv4-only bind yields `ERR_CONNECTION_REFUSED` in the browser even though
+`curl 127.0.0.1:3000` works. Start with `HOST=::` so the server binds dual-stack and is
+reachable over both `127.0.0.1` and `[::1]`/`localhost`.
 
 `npm run dev` requires `nodemon`, which is MISSING from `package.json` and is installed
 globally in this VM instead. If `nodemon` is not found, either reinstall it globally
